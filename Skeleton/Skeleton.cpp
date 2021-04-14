@@ -37,12 +37,20 @@
  * I modified it to fit the description of the second homework.
  */
 
+#define DEBUG
+
 #include "framework.h"
+
+#ifdef DEBUG
+#include <fstream> // needed for real time glsl fragment shader loading
+#include <sstream> // needed for real time glsl fragment shader loading
+#endif // DEBUG
+
 
 // vertex shader in GLSL
 const char* vertexSource = R"(
 	#version 450
-    precision highp float;
+	precision highp float;
 
 	uniform vec3 wLookAt, wRight, wUp;          // pos of eye
 
@@ -57,7 +65,7 @@ const char* vertexSource = R"(
 // fragment shader in GLSL
 const char* fragmentSource = R"(
 	#version 450
-    precision highp float;
+	precision highp float;
 
 	struct Material {
 		vec3 ka, kd, ks;
@@ -177,22 +185,26 @@ const char* fragmentSource = R"(
 	}
 )";
 
+enum MaterialType { ROUGH, REFLECTIVE, SMOOTH };
+
 //---------------------------
 struct Material {
 //---------------------------
-	vec3 ka, kd, ks;
-	float  shininess;
+	vec3 ka, kd, ks; // ambient, diffuse, specular
+	float shininess;
 	vec3 F0;
 	int rough, reflective;
+	MaterialType type;
+	Material(const MaterialType& type) : type(type) { }
 };
 
 //---------------------------
 struct RoughMaterial : Material {
 //---------------------------
-	RoughMaterial(vec3 _kd, vec3 _ks, float _shininess) {
-		ka = _kd * M_PI;
-		kd = _kd;
-		ks = _ks;
+	RoughMaterial(vec3 _kd, vec3 _ks, float _shininess) : Material(ROUGH) {
+		ka = _kd * M_PI; // ambient
+		kd = _kd; // diffuse
+		ks = _ks; // specular
 		shininess = _shininess;
 		rough = true;
 		reflective = false;
@@ -202,10 +214,19 @@ struct RoughMaterial : Material {
 //---------------------------
 struct SmoothMaterial : Material {
 //---------------------------
-	SmoothMaterial(vec3 _F0) {
+	SmoothMaterial(vec3 _F0) : Material(SMOOTH) {
 		F0 = _F0;
 		rough = false;
 		reflective = true;
+	}
+};
+const vec3 one(1, 1, 1);
+vec3& operator/(const vec3& num, const vec3& denom) {
+	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
+}
+struct ReflectiveMaterial : Material {
+	ReflectiveMaterial(const vec3& n, const vec3& kappa) : Material(REFLECTIVE) {
+		F0 = ((n - one) * (n - one) + kappa * kappa) / ((n + one) + (n + one) + kappa * kappa);
 	}
 };
 
@@ -218,7 +239,7 @@ struct Sphere {
 	Sphere(const vec3& _center, float _radius) { center = _center; radius = _radius; }
 };
 
-long time = 0;
+long curTime = 0;
 
 //---------------------------
 struct Camera {
@@ -236,23 +257,46 @@ public:
 		up = normalize(cross(w, right)) * f * tanf(fov / 2);
 	}
 	void Animate(float dt) {
-		eye = vec3((eye.x - lookat.x) * cos(dt) + (eye.z - lookat.z) * sin(dt) + lookat.x,
-			sin(time / 200.0f) / 20 + 45 * M_PI / 180,
-			-(eye.x - lookat.x) * sin(dt) + (eye.z - lookat.z) * cos(dt) + lookat.z); // rotating around target
-		fov = sin(time / 200.0f) / 20 + 45 * M_PI / 180;
+		eye = vec3((eye.x - lookat.x) * cos(dt / 10) + (eye.z - lookat.z) * sin(dt / 10) + lookat.x,
+			eye.y /*sin(curTime / 200.0f) / 20 + 45 * M_PI / 180*/,
+			-(eye.x - lookat.x) * sin(dt / 10) + (eye.z - lookat.z) * cos(dt / 10) + lookat.z); // rotating around target
+		//fov = sin(curTime / 200.0f) / 20 + 45 * M_PI / 180;
 		set(eye, lookat, up, fov);
 	}
 };
 
+enum LightType { POINTLIGHT, DIRECTIONAL };
+
 //---------------------------
 struct Light {
 //---------------------------
-	vec3 direction;
-	vec3 Le, La;
-	Light(vec3 _direction, vec3 _Le, vec3 _La) {
-		direction = normalize(_direction);
-		Le = _Le; La = _La;
+	vec3 Le, La; // light energy, light ambient
+	LightType type;
+	vec3 position;
+	virtual vec3 getDir() = 0;
+	virtual vec3 getPos() { return position; }
+protected:
+	Light(LightType _type, vec3 _Le, vec3 _La) :
+		Le(_Le),
+		La(_La),
+		position(vec3(0, 0, 0)),
+		type(_type) { }
+};
+
+struct PointLight : public Light {
+	PointLight(vec3 _position, vec3 _Le, vec3 _La) : 
+		Light(POINTLIGHT, _Le, _La) {
+		position = _position;
 	}
+	vec3 getDir() { return -1 * position; }
+};
+
+struct DirectionalLight : public Light {
+	vec3 direction;
+	DirectionalLight(vec3 _direction, vec3 _Le, vec3 _La) :
+		Light(DIRECTIONAL, _Le, _La),
+		direction(normalize(_direction)) { }
+	vec3 getDir() { return direction; }
 };
 
 //---------------------------
@@ -275,7 +319,8 @@ public:
 	void setUniformLight(Light* light) {
 		setUniform(light->La, "light.La");
 		setUniform(light->Le, "light.Le");
-		setUniform(light->direction, "light.direction");
+		//setUniform(light->getDir(), "light.direction");
+		setUniform(light->getPos(), "light.position");
 	}
 
 	void setUniformCamera(const Camera& camera) {
@@ -297,6 +342,8 @@ public:
 
 float rnd() { return (float)rand() / RAND_MAX; }
 
+Shader shader; // vertex and fragment shaders
+
 //---------------------------
 class Scene {
 //---------------------------
@@ -304,22 +351,70 @@ class Scene {
 	std::vector<Light*> lights;
 	Camera camera;
 	std::vector<Material*> materials;
+	std::vector<vec3> dodecahedronVertices;
+	std::vector<int> dodecahedronPlanes;
 public:
 	void build() {
+		const float g = 0.618f;
+		const float G = 1.618f;
+		dodecahedronVertices = std::vector<vec3>({
+			vec3(0, g, G),
+			vec3(0, -g, G),
+			vec3(0, -g, -G),
+			vec3(0, g, -G),
+			vec3(G, 0, g),
+			vec3(-G, 0, g),
+			vec3(-G, 0, -g),
+			vec3(G, 0, -g),
+			vec3(g, G, 0),
+			vec3(-g, G, 0),
+			vec3(-g, -G, 0),
+			vec3(g, -G, 0),
+			vec3(1, 1, 1),
+			vec3(-1, 1, 1),
+			vec3(-1, -1, 1),
+			vec3(1, -1, 1),
+			vec3(1, -1, -1),
+			vec3(1, 1, -1),
+			vec3(-1, 1, -1),
+			vec3(-1, -1, -1),
+			});
+
+		dodecahedronPlanes = std::vector<int>({
+			1,2,16,5,13, // f1
+			1,13,9,10,14, // f3
+			2,15,11,12,16, // f4
+			3,4,18,8,17, // f5
+			3,17,12,11,20, // f6
+			3,20,7,19,4, // f7
+			19,10,9,18,4, // f8
+			16,12,17,8,5, // f9
+			5,8,18,9,13, // f10
+			14,10,19,7,6, // f11
+			6,7,20,11,15 // f12
+			});
+
 		vec3 eye = vec3(0, 0, 2);
 		vec3 vup = vec3(0, 1, 0);
 		vec3 lookat = vec3(0, 0, 0);
 		float fov = 45 * (float)M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 
-		lights.push_back(new Light(vec3(1, 1, 1), vec3(3, 3, 3), vec3(0.4f, 0.3f, 0.3f)));
+		//lights.push_back(new DirectionalLight(vec3(1, 1, 1), vec3(3, 3, 3), vec3(0.4f, 0.3f, 0.3f)));
+		lights.push_back(new PointLight(vec3(0, 0, 0), vec3(2, 2, 2), vec3(0.4f, 0.3f, 0.3f)));
 
+		// Az arany törésmutatója és kioltási tényezõje: n/k: 0.17/3.1, 0.35/2.7, 1.5/1.9
+		vec3 kdGold(0.17f, 0.35f, 1.5f), ksGold(3.1, 2.7, 1.9);
 		vec3 kd(0.3f, 0.2f, 0.1f), ks(10, 10, 10);
-		materials.push_back(new RoughMaterial(kd, ks, 50));
-		materials.push_back(new SmoothMaterial(vec3(0.9f, 0.85f, 0.8f)));
+		//materials.push_back(new RoughMaterial(kd, ks, 50));
+		materials.push_back(new RoughMaterial(kdGold, ksGold, 150));
+		//materials.push_back(new SmoothMaterial(vec3(0.9f, 0.85f, 0.8f)));
+		materials.push_back(new SmoothMaterial(vec3(kdGold.y/ksGold.y, kdGold.z/ksGold.z, kdGold.x/kdGold.x)));
 
-		for (int i = 0; i < 100; i++)
-			objects.push_back(new Sphere(vec3(rnd() - 0.5f, rnd() - 0.5f, rnd() - 0.5f), rnd() * 0.1f));
+		objects.push_back(new Sphere(vec3(0.2f, 0.2f, 0.2f), 0.04f)); // we use the first sphere
+		for (int i = 0; i < 20; i++)
+			objects.push_back(new Sphere(vec3(rnd() - 0.5f, rnd() - 0.5f, rnd() - 0.5f), fmaxf(rnd() * 0.1f, 0.04f)));
+		
 	}
 
 	void setUniform(Shader& shader) {
@@ -329,10 +424,16 @@ public:
 		shader.setUniformCamera(camera);
 	}
 
-	void Animate(float dt) { camera.Animate(dt); }
+	void Animate(float dt) { 
+		camera.Animate(dt);
+		// rotating around target
+		objects[0]->center.x = ((objects[0]->center.x - camera.lookat.x) * cos(dt) + (objects[0]->center.z - camera.lookat.z) * sin(dt) + camera.lookat.x) / 5.0f;
+		objects[0]->center.z = (-(objects[0]->center.x - camera.lookat.x) * sin(dt) + (objects[0]->center.z - camera.lookat.z) * cos(dt) + camera.lookat.z) / 5.0f;
+		objects[0]->radius += dt / 100.0f;
+		shader.setUniformObjects(objects);
+	}
 };
 
-Shader shader; // vertex and fragment shaders
 Scene scene;
 
 //---------------------------
@@ -363,15 +464,28 @@ public:
 
 FullScreenTexturedQuad fullScreenTexturedQuad;
 
+void reloadVerFrag(Shader& sh, const std::string& ver = vertexSource, const std::string& frag = fragmentSource) {
+	sh.create(ver.c_str(), frag.c_str(), "fragmentColor");
+	sh.Use();
+}
+
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
 	fullScreenTexturedQuad.create();
 
+#ifdef DEBUG
 	// create program for the GPU
+	std::ifstream frag("fragmentShader.frag");
+	std::stringstream fragSS;
+	fragSS << frag.rdbuf();
+	reloadVerFrag(shader, vertexSource, fragSS.str());
+	frag.close();
+#else
 	shader.create(vertexSource, fragmentSource, "fragmentColor");
 	shader.Use();
+#endif // DEBUG
 }
 
 // Window has become invalid: Redraw
@@ -380,7 +494,7 @@ void onDisplay() {
 	nFrames++;
 	static long tStart = glutGet(GLUT_ELAPSED_TIME);
 	long tEnd = glutGet(GLUT_ELAPSED_TIME);
-	printf("%d msec\r", (tEnd - tStart) / nFrames);
+	printf("Frame time: %d msec\r", (tEnd - tStart) / nFrames);
 
 	glClearColor(1.0f, 0.5f, 0.8f, 1.0f);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
@@ -393,6 +507,16 @@ void onDisplay() {
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
+#ifdef DEBUG
+	if (key == ' ') {
+		// reloading fragment and vertex source
+		std::ifstream frag("fragmentShader.frag");
+		std::stringstream fragSS;
+		fragSS << frag.rdbuf();
+		reloadVerFrag(shader, vertexSource, fragSS.str());
+		frag.close();
+	}
+#endif // DEBUG
 }
 
 // Key of ASCII code released
@@ -411,12 +535,12 @@ void onMouseMotion(int pX, int pY) {
 long oldTime = 0;
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
-	time = glutGet(GLUT_ELAPSED_TIME);
+	curTime = glutGet(GLUT_ELAPSED_TIME);
 	if (oldTime == 0) {
-		oldTime = time;
+		oldTime = curTime;
 	}
-	long dtime = time - oldTime;
-	oldTime = time;
+	long dtime = curTime - oldTime;
+	oldTime = curTime;
 	scene.Animate((float)dtime / 1000.0f);
 	//scene.Animate(0.02f);
 	glutPostRedisplay();
