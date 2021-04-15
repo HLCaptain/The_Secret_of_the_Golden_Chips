@@ -64,7 +64,7 @@ const char* vertexSource = R"(
 )";
 // fragment shader in GLSL
 const char* fragmentSource = R"(
-	#version 450
+	#version 330
 precision highp float;
 
 struct Material {
@@ -108,7 +108,7 @@ const int numDodFaces = 12 * 5; // 12 faces, 5 vertices for every face
 const int numDodVertices = 20;
 const float epsilon = 0.0001f;
 const float scale = 1.0f;
-const float teleportHoleScale = 0.05f; // value between 0.45 .. 1
+const float teleportHoleScale = 0.1f; // value between  0..0.45
 const vec3 one = vec3(1.0, 1.0, 1.0);
 const float PI = 3.1415f;
 
