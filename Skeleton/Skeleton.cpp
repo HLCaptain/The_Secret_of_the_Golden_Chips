@@ -34,8 +34,11 @@
 
 /**
  * This homework is based on the Computer Graphics Sample Program: GPU ray casting.
- * I modified it to fit the description of the second homework.
+ * Also copied some fragment shader code from Mirascope Simulator.
+ * I modified the programs to fit the description of the second homework.
  */
+
+// Use this to debug.
 
 //#define DEBUG
 
@@ -321,23 +324,15 @@ void main() {
 }
 )";
 
-enum MaterialType { ROUGH, REFLECTIVE };
-
-//---------------------------
 struct Material {
-//---------------------------
 	vec3 ka, kd, ks; // ambient, diffuse, specular
 	float shininess;
 	vec3 F0;
 	int rough, reflective;
-	MaterialType type;
-	Material(const MaterialType& type) : type(type) { }
 };
 
-//---------------------------
 struct RoughMaterial : Material {
-//---------------------------
-	RoughMaterial(vec3 _kd = vec3(0.0f, 0.0f, 0.0f), vec3 _ks = vec3(0.0f, 0.0f, 0.0f), float _shininess = 10) : Material(ROUGH) {
+	RoughMaterial(vec3 _kd = vec3(0.0f, 0.0f, 0.0f), vec3 _ks = vec3(0.0f, 0.0f, 0.0f), float _shininess = 10) {
 		ka = _kd * M_PI; // ambient
 		kd = _kd; // diffuse
 		ks = _ks; // specular
@@ -347,22 +342,29 @@ struct RoughMaterial : Material {
 	}
 };
 
-const vec3 one(1, 1, 1);
+const vec3 one(1, 1, 1); // its one vector (1), with one (1) elements
+
+/**
+ * operator/
+ * @brief Needed for calculating F0.
+ * @param num numerator
+ * @param denom denominator
+ * @return a vec3
+ */
 vec3 operator/(const vec3 num, const vec3 denom) {
 	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
 }
 
 struct ReflectiveMaterial : Material {
-	ReflectiveMaterial(const vec3& n = vec3(1.0f, 1.0f, 1.0f), const vec3& kappa = vec3(1.0f, 1.0f, 1.0f)) : Material(REFLECTIVE) {
+	ReflectiveMaterial(const vec3& n = vec3(1.0f, 1.0f, 1.0f), const vec3& kappa = vec3(1.0f, 1.0f, 1.0f)) {
 		F0 = ((n - one) * (n - one) + kappa * kappa) / ((n + one) * (n + one) + kappa * kappa);
 		rough = false;
 		reflective = true;
 	}
 };
 
-//---------------------------
+/// Needed for containing the parabolic plane
 struct Sphere {
-//---------------------------
 	vec3 center;
 	float radius;
 	Sphere(const vec3& _center = vec3(0.0f, 0.0f, 0.0f), float _radius = 1.0f) :
@@ -370,9 +372,8 @@ struct Sphere {
 		radius(_radius) { }
 };
 
-//---------------------------
+/// Holding the a,b,c parameters for the quadratic formula.
 struct Quadratic {
-//---------------------------
 	vec3 center;
 	float a, b, c;
 	Quadratic(const vec3& _center = vec3(0.0f, 0.0f, 0.0f), const float& _a = 1.0f, const float& _b = 1.0f, const float& _c = 1.0f) :
@@ -382,9 +383,7 @@ struct Quadratic {
 		c(_c) { }
 };
 
-//---------------------------
 struct Dodecahedron {
-	//---------------------------
 	std::vector<vec3> vertices;
 	std::vector<int> faces;
 	Dodecahedron(const std::vector<vec3>& vertices = std::vector<vec3>(), const std::vector<int>& planes = std::vector<int>()) :
@@ -392,62 +391,54 @@ struct Dodecahedron {
 		faces(planes) { }
 };
 
+// Holding the current time in ms.
 long curTime = 0;
 
-//---------------------------
 struct Camera {
-//---------------------------
-	vec3 eye, lookat, right, up; // lookat would have been nice to name it "target" smh
-	float fov;
-	float speed;
+	vec3 eye, target, right, up;
+	float fov; // field of view
+	float speed; // speed of the camera going around the target
 public:
+	// Setting basic values.
 	void set(vec3 _eye, vec3 _lookat, vec3 vup, float _fov) {
 		eye = _eye;
-		lookat = _lookat;
+		target = _lookat;
 		fov = _fov;
-		vec3 w = eye - lookat;
+		vec3 w = eye - target;
 		float f = length(w);
 		right = normalize(cross(vup, w)) * f * tanf(fov / 2);
 		up = normalize(cross(w, right)) * f * tanf(fov / 2);
 	}
+	// Rotating around target.
 	void Animate(float dt) {
-		eye = vec3((eye.x - lookat.x) * cos(dt * speed) + (eye.z - lookat.z) * sin(dt * speed) + lookat.x,
+		eye = vec3((eye.x - target.x) * cos(dt * speed) + (eye.z - target.z) * sin(dt * speed) + target.x,
 			sin(curTime / 4000.0f) / 1.2f,
-			-(eye.x - lookat.x) * sin(dt * speed) + (eye.z - lookat.z) * cos(dt * speed) + lookat.z); // rotating around target
-		// //eye = vec3((eye.x - lookat.x) * cos(dt * speed) + (eye.z - lookat.z) * sin(dt * speed) + lookat.x,
-		//	eye.y /*sin(curTime / 200.0f) / 20 + 45 * M_PI / 180*/,
-		//	-(eye.x - lookat.x) * sin(dt * speed) + (eye.z - lookat.z) * cos(dt * speed) + lookat.z); // rotating around target
-		//fov = sin(curTime / 200.0f) / 20 + 45 * M_PI / 180;
-		set(eye, lookat, up, fov);
+			-(eye.x - target.x) * sin(dt * speed) + (eye.z - target.z) * cos(dt * speed) + target.z); // rotating around target
+		set(eye, target, up, fov);
 	}
-	Camera() : speed(1.0f) { }
+	Camera() : speed(1.0f), fov(90.0 * M_PI / 180) { }
 };
 
+// Calculating Fresnel for an RGB parameter.
 float Fresnel(const float& n, const float& kappa) {
 	return ((n - 1) * (n - 1) + kappa * kappa) / ((n + 1) * (n + 1) + kappa * kappa);
 }
 
-enum LightType { POINTLIGHT, DIRECTIONAL, LIGHT };
-
-//---------------------------
 struct Light {
-//---------------------------
 	vec3 Le, La; // light energy, light ambient
-	LightType type;
 	vec3 position;
 	virtual vec3 getDir() = 0;
 	virtual vec3 getPos() { return position; }
 protected:
-	Light(LightType _type = LIGHT, vec3 _Le = vec3(0.0f, 0.0f, 0.0f), vec3 _La = vec3(0.0f, 0.0f, 0.0f)) :
+	Light(vec3 _Le = vec3(0.0f, 0.0f, 0.0f), vec3 _La = vec3(0.0f, 0.0f, 0.0f)) :
 		Le(_Le),
 		La(_La),
-		position(vec3(0, 0, 0)),
-		type(_type) { }
+		position(vec3(0, 0, 0)) { }
 };
 
 struct PointLight : public Light {
 	PointLight(vec3 _position = vec3(0.0f, 0.0f, 0.0f), vec3 _Le = vec3(0.0f, 0.0f, 0.0f), vec3 _La = vec3(0.0f, 0.0f, 0.0f)) :
-		Light(POINTLIGHT, _Le, _La) {
+		Light(_Le, _La) {
 		position = _position;
 	}
 	vec3 getDir() { return -1 * position; }
@@ -457,40 +448,44 @@ struct PointLight : public Light {
 struct DirectionalLight : public Light {
 	vec3 direction;
 	DirectionalLight(vec3 _direction = vec3(0.0f, 0.0f, 0.0f), vec3 _Le = vec3(0.0f, 0.0f, 0.0f), vec3 _La = vec3(0.0f, 0.0f, 0.0f)) :
-		Light(DIRECTIONAL, _Le, _La),
+		Light(_Le, _La),
 		direction(normalize(_direction)) { }
 	vec3 getDir() { return direction; }
 };
 
-
-// modified from https://www.codespeedy.com/hsv-to-rgb-in-cpp/
-vec3 HslToRgb(const float& hue, const float& saturation, const float& lightness) {
+// modified from https://en.wikipedia.org/wiki/HSL_and_HSV
+vec3 HsvToRgb(const float& hue, const float& saturation, const float& value) {
 	float s = saturation / 100;
-	float l = lightness / 100;
-	float c = (1 - abs(2 * l - 1) * s);
-	float x = c * (1 - abs(fmod(hue / 60.0f, 2) - 1));
-	float m = l - c / 2;
+	float v = value / 100;
+	float c = v * s;
+	float h = fmod(hue, 360.0) / 60.0;
+	float x = c * (1 - abs(fmod(h, 2) - 1));
+	float m = v - c;
+
 	float r, g, b;
-	if (hue >= 0 && hue < 60) {
+	if (h >= 0 && h < 1) {
 		r = c, g = x, b = 0;
-	} else if (hue >= 60 && hue < 120) {
+	} else if (h >= 1 && h < 2) {
 		r = x, g = c, b = 0;
-	} else if (hue >= 120 && hue < 180) {
+	} else if (h >= 2 && h < 3) {
 		r = 0, g = c, b = x;
-	} else if (hue >= 180 && hue < 240) {
+	} else if (h >= 3 && h < 4) {
 		r = 0, g = x, b = c;
-	} else if (hue >= 240 && hue < 300) {
+	} else if (h >= 4 && h < 5) {
 		r = x, g = 0, b = c;
 	} else {
 		r = c, g = 0, b = x;
 	}
-	return vec3(r, g, b);
+	return vec3(r + m / 256.0, g + m / 256.0, b + m / 256.0);
 }
 
-//---------------------------
+// Shader program, updating assets happens here
 class Shader : public GPUProgram {
-//---------------------------
 public:
+	/// Setting the 3 distinct materials: 
+	/// portal reflective mat,
+	/// dodecahedron wall diffuse mat,
+	/// golden reflective, parabola mat.
 	void setUniformMaterials(const Material& dodDifMat, const Material& dodRefMat, const Material& chipsMat) {
 		char name[256];
 		// diffuse walls of dod
@@ -519,19 +514,22 @@ public:
 		sprintf(name, "materials[%d].reflective", 2);  setUniform(chipsMat.reflective, name);
 	}
 
+	// updating main point light
 	void setUniformLight(const PointLight& light) {
 		setUniform(light.La, "light.La");
 		setUniform(light.Le, "light.Le");
 		setUniform(light.position, "light.position");
 	}
 
+	// setting the camera
 	void setUniformCamera(const Camera& camera) {
 		setUniform(camera.eye, "wEye");
-		setUniform(camera.lookat, "wLookAt");
+		setUniform(camera.target, "wLookAt");
 		setUniform(camera.right, "wRight");
 		setUniform(camera.up, "wUp");
 	}
 
+	/// Setting the quadratic parameters and dodecahedron. Also the encasing sphere for the parabola.
 	void setUniformObjects(const Quadratic& quad, const Dodecahedron& dod) {
 		char name[256];
 		for (unsigned int i = 0; i < dod.faces.size(); i++) {
@@ -541,7 +539,7 @@ public:
 			sprintf(name, "dod.vertices[%d]", i);  setUniform(dod.vertices[i], name);
 		}
 
-		// maybe useless copying abc
+		// copying abc
 		setUniform(quad.a, "quad.a");
 		setUniform(quad.b, "quad.b");
 		setUniform(quad.c, "quad.c");
@@ -551,6 +549,7 @@ public:
 		setUniform(0.3f, "quadSphere.radius");
 	}
 
+	// sometimes it is fun changing things in real time ya know... in the shader...
 	void setUniformTime(const long& time) {
 		setUniform((float)time, "timeMs");
 	}
@@ -561,20 +560,20 @@ float rnd() { return (float)rand() / RAND_MAX; }
 
 Shader shader; // vertex and fragment shaders
 
-//---------------------------
+// Orbifold Visualization
 class Scene {
-//---------------------------
-	Camera camera;
-	RoughMaterial dodDifMat;
-	ReflectiveMaterial dodRefMat;
-	ReflectiveMaterial chipsMat;
-	Dodecahedron dod;
-	Quadratic quad;
-	PointLight pointLight;
+	Camera camera; // Camera is rotating around the target, which is the parabola.
+	RoughMaterial dodDifMat; // Dodecahedron edges' diffuse material.
+	ReflectiveMaterial dodRefMat; // Dodecahedron teleport planes.
+	ReflectiveMaterial chipsMat; // Parabola's reflective golden material.
+	Dodecahedron dod; // Dodecahedron itself.
+	Quadratic quad; // Parameters for the parabolic equation (a,b,c).
+	PointLight pointLight; // Point light in the center of the room.
 public:
+	/// Build elements.
 	void build() {
-
 		// INI DODECAHEDRON
+		// uploading dod vertices
 		const float g = 0.618f;
 		const float G = 1.618f;
 		std::vector<vec3> dodecahedronVertices = std::vector<vec3>({
@@ -599,6 +598,7 @@ public:
 			vec3(-1, 1, -1),
 			vec3(-1, -1, -1),
 			});
+		// uploading dod planes
 		std::vector<int> dodecahedronPlanes = std::vector<int>({
 			1,2,16,5,13, // f1
 			1,13,9,10,14, // f2
@@ -620,14 +620,15 @@ public:
 		// INI CAMERA
 		vec3 eye = vec3(0, 0, 1);
 		vec3 vup = vec3(0, 1, 0);
-		vec3 lookat = vec3(0, 0, 0);
-		float fov = 90 * (float)M_PI / 180;
+		vec3 lookat = vec3(0, 0, 0); // focus at the middle
+		float fov = 90 * (float)M_PI / 180; // 90 degree of view
 		camera.set(eye, lookat, vup, fov);
-		camera.speed = 0.1f;
+		camera.speed = 0.1f; // speed of camera going around the target
 		// INI CAMERA END
 
 		// INI LIGHT
-		pointLight = PointLight(vec3(0.0f, 0.0f, 0.0f), vec3(1.6f, 1.6f, 1.6f), vec3(0.3f, 0.3f, 0.3f));
+		// white light with low ambient light energy in the middle of the room.
+		pointLight = PointLight(vec3(0.0f, 0.0f, 0.0f), vec3(1.6f, 1.6f, 1.6f), vec3(0.2f, 0.2f, 0.2f));
 		// INI LIGHT END
 
 		// INI MATERIALS
@@ -635,42 +636,42 @@ public:
 		// Az arany törésmutatója és kioltási tényezõje: n/k: 0.17/3.1, 0.35/2.7, 1.5/1.9
 		vec3 nGold(0.17f, 0.35f, 1.5f), kappaGold(3.1f, 2.7f, 1.9f);
 		chipsMat = ReflectiveMaterial(nGold, kappaGold);
-		dodDifMat = RoughMaterial(vec3(1.0f, 0.5f, 0.15f), vec3(1.0f, 1.0f, 1.0f), 10.0f); // (kd) diffuse: RGB, (ks) specular: RGB
+		dodDifMat = RoughMaterial(vec3(0.4f, 0.4f, 0.4f), vec3(1.0f, 1.0f, 1.0f), 10.0f); // (kd) diffuse: RGB, (ks) specular: RGB
 		dodRefMat = ReflectiveMaterial(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 0.0f));
 		// INI MATERIALS END
 
 		// INI QUAD
 		// quadratic equation: exp(something) - 1 = 0
 		// quadratic equation simplified: axx + byy - cz = 0
-		quad = Quadratic(vec3(0.2f, 0.2f, 0.2f), 3.2f, 4.2f, 2.8f);
+		quad = Quadratic(vec3(0.0f, 0.0f, 0.0f), 3.2f, 4.2f, 2.8f); // a=3.2, b=4.2, c=2.8
 		// INI QUAD END
 	}
 
+	// Updating assets onto shader.
 	void setUniform(Shader& shader) {
 		shader.setUniformObjects(quad, dod);
 		shader.setUniformMaterials(dodDifMat, dodRefMat, chipsMat);
 		shader.setUniformLight(pointLight);
 		shader.setUniformCamera(camera);
-		//shader.setUniformTime(curTime);
+		//shader.setUniformTime(curTime); // current time needed for cool effects if enabled in the shader
 	}
 
+	// Animating the camera and the colour of the dodecahedron (just for fun).
 	void Animate(float dt) { 
 		camera.Animate(dt);
-		float delta = 140 * M_PI / 180;
-		vec3 newColor = HslToRgb((cos((float)curTime / 5000.0 + delta) + 1) / 2 * 360, 0, 0);
+		float delta = 0 * M_PI / 180;
+		vec3 newColor = HsvToRgb((cos((float)curTime / 5000.0 + delta) + 1) / 2 * 360, 50, 100);
 		dodDifMat.kd = newColor;
 		dodDifMat.ks = vec3(1, 1, 1);
 		dodDifMat.ka = vec3(1, 1, 1);
 	}
-
-	Scene() { }
 };
 
+// Orbifold visualizations scene.
 Scene scene;
 
-//---------------------------
+/// Quad texture drawn onto the screen with the ray traced image.
 class FullScreenTexturedQuad {
-//---------------------------
 	unsigned int vao = 0;	// vertex array object id and texture id
 public:
 	void create() {
@@ -696,6 +697,8 @@ public:
 
 FullScreenTexturedQuad fullScreenTexturedQuad;
 
+// Used for debugging.
+/// Loads vertexSource and fragmentSource into the shader.
 void reloadVerFrag(Shader& sh, const std::string& ver = vertexSource, const std::string& frag = fragmentSource) {
 	sh.create(ver.c_str(), frag.c_str(), "fragmentColor");
 	sh.Use();
@@ -720,14 +723,11 @@ void onInitialization() {
 #endif // DEBUG
 }
 
+long dtime = 0;
+
 // Window has become invalid: Redraw
 void onDisplay() {
-	static int nFrames = 0;
-	nFrames++;
-	static long tStart = glutGet(GLUT_ELAPSED_TIME);
-	long tEnd = glutGet(GLUT_ELAPSED_TIME);
-	printf("Frame time: %d msec\r", (tEnd - tStart) / nFrames);
-
+	printf("Frame time: %d ms   \r", dtime);
 	glClearColor(1.0f, 0.5f, 0.8f, 1.0f);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
@@ -765,15 +765,15 @@ void onMouseMotion(int pX, int pY) {
 }
 
 long oldTime = 0;
+
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	curTime = glutGet(GLUT_ELAPSED_TIME);
 	if (oldTime == 0) {
 		oldTime = curTime;
 	}
-	long dtime = curTime - oldTime;
+	dtime = curTime - oldTime;
 	oldTime = curTime;
-	scene.Animate((float)dtime / 1000.0f);
-	//scene.Animate(0.02f);
+	scene.Animate((float)dtime / 1000.0f); // animating with dtime is always the best idea.
 	glutPostRedisplay();
 }
