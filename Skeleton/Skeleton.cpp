@@ -348,7 +348,7 @@ struct RoughMaterial : Material {
 };
 
 const vec3 one(1, 1, 1);
-vec3& operator/(const vec3& num, const vec3& denom) {
+vec3 operator/(const vec3 num, const vec3 denom) {
 	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
 }
 
