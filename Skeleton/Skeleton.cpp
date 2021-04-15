@@ -49,7 +49,7 @@
 
 // vertex shader in GLSL
 const char* vertexSource = R"(
-	#version 450
+	#version 300 es
 	precision highp float;
 
 	uniform vec3 wLookAt, wRight, wUp;          // pos of eye
