@@ -203,7 +203,7 @@ vec3 Fresnel(vec3 F0, float cosTheta) {
 	return F0 + (one - F0) * pow(cosTheta, 5);
 }
 
-const int maxdepth = 20;
+const int maxdepth = 5;
 
 vec3 trace(Ray ray) {
 	vec3 weight = vec3(1, 1, 1);
@@ -234,7 +234,8 @@ vec3 trace(Ray ray) {
 				ray.dir = reflectedRay;
 			}
 			if (hit.mat == 1) { // we hit the portal
-				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, timeMs / 100 * PI / 180);
+				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72 * PI / 180 + 0*timeMs / 100 * PI / 180);
+				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72 * PI / 180 + 0*timeMs / 100 * PI / 180);
 			}
 		}
 	}
