@@ -40,7 +40,7 @@
 
 // Use this to debug.
 
-//#define DEBUG
+#define DEBUG
 
 #include "framework.h"
 
@@ -533,10 +533,10 @@ public:
 	void setUniformObjects(const Quadratic& quad, const Dodecahedron& dod) {
 		char name[256];
 		for (unsigned int i = 0; i < dod.faces.size(); i++) {
-			sprintf(name, "dod.faces[%d]", i);  setUniform(dod.faces[i], name);
+			sprintf(name, "dodFaces[%d]", i);  setUniform(dod.faces[i], name);
 		}
 		for (unsigned int i = 0; i < dod.vertices.size(); i++) {
-			sprintf(name, "dod.vertices[%d]", i);  setUniform(dod.vertices[i], name);
+			sprintf(name, "dodVertices[%d]", i);  setUniform(dod.vertices[i], name);
 		}
 
 		// copying abc
@@ -546,7 +546,7 @@ public:
 
 		// uploading the encasing of the quad
 		setUniform(vec3(0.0f, 0.0f, 0.0f), "quadSphere.center");
-		setUniform(0.3f, "quadSphere.radius");
+		setUniform(0.6f, "quadSphere.radius");
 	}
 
 	// sometimes it is fun changing things in real time ya know... in the shader...
@@ -664,6 +664,11 @@ public:
 		dodDifMat.kd = newColor;
 		dodDifMat.ks = vec3(1, 1, 1);
 		dodDifMat.ka = vec3(1, 1, 1);
+
+		// just for fun
+		quad.a = (cos((float)curTime / 2000.0) * 2);
+		quad.b = (cos((float)curTime / 2000.0 + 180 * M_PI / 180) * 2);
+		quad.c = (cos((float)curTime / 3000.0 + 0 * M_PI / 180) * 2);
 	}
 };
 

@@ -28,11 +28,6 @@ struct Ray {
 	vec3 start, dir;
 };
 
-struct Dodecahedron {
-	vec3 vertices[20];
-	int faces[12 * 5];
-};
-
 struct Quadratic {
 	float a, b, c;
 };
@@ -42,16 +37,15 @@ const int numDodFaces = 12 * 5; // 12 faces, 5 vertices for every face
 const int numDodVertices = 20;
 const float epsilon = 0.0001f;
 const float scale = 1.0f;
-const float teleportHoleScale = 0.1f; // value between  0..0.45
+const float teleportHoleScale = 0.100f; // distance from edges
 const vec3 one = vec3(1.0, 1.0, 1.0);
 const float PI = 3.1415f;
+const int maxdepth = 5;
 
 uniform vec3 wEye;
 uniform Light light;
-//uniform Material dodDifMat; // mat = 0
-//uniform Material dodRefMat; // mat = 1
-//uniform Material chipsMat; // mat = 2
-uniform Dodecahedron dod;
+uniform vec3 dodVertices[20];
+uniform	int dodFaces[12 * 5];
 uniform Quadratic quad;
 uniform Material materials[3]; // 0: dodDifMat, 1: dodRefMat, 2: chipsMat
 // needed to contain Quadratic
@@ -80,7 +74,6 @@ Hit solveQuadratic(float a, float b, float c, Ray ray, Hit hit) {
 		if (t1 > 0.0 && (t1 < hit.t || hit.t < 0.0)) {
 			hit.t = t1;
 			hit.position = ray.start + ray.dir * hit.t;
-			// TODO: negate negated hit.pos.x and y
 			hit.normal = normalize(vec3(-2.0 * quad.a * hit.position.x / quad.c, -2.0 * quad.b * hit.position.y / quad.c, 1.0));
 			hit.mat = 2; // material is reflective (chips) if hit is valid
 		}
@@ -89,12 +82,44 @@ Hit solveQuadratic(float a, float b, float c, Ray ray, Hit hit) {
 }
 
 void getObjPlane(int i, float scale, out vec3 p, out vec3 normal) {
-	vec3 p1 = dod.vertices[dod.faces[5 * i + 2] - 1]; // faces[0..19]
-	vec3 p2 = dod.vertices[dod.faces[5 * i + 3] - 1]; // vertices[0..59]
-	vec3 p3 = dod.vertices[dod.faces[5 * i + 4] - 1];
+	vec3 p1 = dodVertices[dodFaces[5 * i] - 1]; // faces[0..19]
+	vec3 p2 = dodVertices[dodFaces[5 * i + 1] - 1]; // vertices[0..59]
+	vec3 p3 = dodVertices[dodFaces[5 * i + 2] - 1];
 	normal = cross(p2 - p1, p3 - p1);
 	if (dot(p1, normal) < 0.0) normal = -normal;
-	p = p1 * scale + vec3(0.0001f, 0.0001f, 0.0001f);
+	p = p1 * scale + vec3(0.0000f, 0.0000f, 0.000f);
+}
+
+float distanceVec3(vec3 p1, vec3 p2) {
+	return sqrt((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z));
+}
+
+// modified code from https://math.stackexchange.com/questions/1905533/find-perpendicular-distance-from-point-to-line-in-3d
+float isNearLine(vec3 a, vec3 b, vec3 c) {
+	vec3 d = normalize(c - b);
+	vec3 v = a - b;
+	float t = dot(v, d);
+	vec3 p = b + t * d;
+	return distanceVec3(p, a);
+}
+
+// checks if p is nearby the edges of that plane
+bool isInDodPlane(int n, float dist, vec3 p) {
+	// checking last and first point
+	vec3 p1 = dodVertices[dodFaces[5 * n + 4] - 1];
+	vec3 p2 = dodVertices[dodFaces[5 * n] - 1];
+	if (isNearLine(p, p1, p2) < dist) {
+		return true;
+	}
+	// checking other points
+	for (int i = 1; i < 5; i++) {
+		p1 = dodVertices[dodFaces[5 * n + i - 1] - 1];
+		p2 = dodVertices[dodFaces[5 * n + i] - 1];
+		if (isNearLine(p, p1, p2) < dist) {
+			return true;
+		}
+	}
+	return false;
 }
 
 vec4 quarternionMul(vec4 q1, vec4 q2) {
@@ -140,15 +165,10 @@ Hit intersectDod(const Ray ray, Hit hit) {
 		if (ti <= epsilon || (ti > hit.t && hit.t > 0.0)) continue;
 		vec3 pintersect = ray.start + ray.dir * ti;
 		// if we hit a face
-		bool outsidePortal = false;
 		bool outside = false;
 		for (int j = 0; j < numDodFaces / 5; j++) {
 			if (i == j) continue;
 			vec3 p11, n;
-			getObjPlane(j, scale - scale * teleportHoleScale, p11, n);
-			if (dot(n, pintersect - p11) > 0.0) {
-				outsidePortal = true;
-			}
 			getObjPlane(j, scale, p11, n);
 			if (dot(n, pintersect - p11) > 0.0) {
 				outside = true;
@@ -159,14 +179,15 @@ Hit intersectDod(const Ray ray, Hit hit) {
 			hit.t = ti;
 			hit.position = pintersect;
 			hit.normal = normalize(normal);
-			if (!outsidePortal) hit.mat = 1; else hit.mat = 0; // 0 or 1
-			// TODO: check distance from edges and assign mat based on that
+			bool insidePortal = isInDodPlane(i, teleportHoleScale, hit.position);
+			// check distance from edges and assign mat based on that
+			if (insidePortal) hit.mat = 0; else hit.mat = 1; // 0 or 1	
 		}
 	}
 	return hit;
 }
 
-// from mirascope
+// from mirascope simulator (heavily modified)
 Hit intersectQuad(const Ray ray, Hit hit) {
 	float A = quad.a * ray.dir.x * ray.dir.x + quad.b  * ray.dir.y * ray.dir.y;
 	float B = quad.a * 2.0 * ray.dir.x * ray.start.x + quad.b * 2.0 * ray.dir.y * ray.start.y - quad.c * ray.dir.z;
@@ -188,7 +209,6 @@ Hit firstIntersect(Ray ray) {
 }
 
 bool shadowIntersect(Ray ray) {	// for directional lights
-	//for (int o = 0; o < nObjects; o++) if (intersect(objects[o], ray).t > 0) return true; // hit.t < 0 if no intersection
 	Hit bestHit;
 	bestHit.t = -1.0;
 
@@ -202,8 +222,6 @@ bool shadowIntersect(Ray ray) {	// for directional lights
 vec3 Fresnel(vec3 F0, float cosTheta) {
 	return F0 + (one - F0) * pow(cosTheta, 5.0);
 }
-
-const int maxdepth = 5;
 
 vec3 trace(Ray ray) {
 	vec3 weight = vec3(1, 1, 1);
@@ -234,8 +252,8 @@ vec3 trace(Ray ray) {
 				ray.dir = reflectedRay;
 			}
 			if (hit.mat == 1) { // we hit the portal
-				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72.0 * PI / 180.0);
-				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72.0 * PI / 180.0);
+				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72.0 * PI / 180.0 + 0.0* timeMs * PI / 180.0 / 200.0);
+				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72.0 * PI / 180.0 + 0.0* timeMs * PI / 180.0 / 200.0);
 			}
 		}
 	}
@@ -248,8 +266,5 @@ void main() {
 	ray.start = wEye; 
 	ray.dir = normalize(p - wEye);
 	fragmentColor = vec4(trace(ray), 1);
-	//if (dot(p, p) < 0.0001) { // middle point for debugging
-	//	fragmentColor = vec4(1, 1, 1, 1);
-	//}
-	//fragmentColor = vec4(0.2, 0.2, 0.2, 0.2);
+	//if (dot(p, p) < 0.0001) fragmentColor = vec4(1, 1, 1, 1); // middle point for debugging
 }
