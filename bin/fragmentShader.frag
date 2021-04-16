@@ -269,9 +269,9 @@ vec3 trace(Ray ray) {
 			if (hit.mat == 2) { // we hit the chips
 				ray.dir = reflectedRay;
 			}
-			if (hit.mat == 1) { // we hit the portal
-				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72.0 * PI / 180.0 + 0.0* timeMs * PI / 180.0 / 200.0);
-				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72.0 * PI / 180.0 + 0.0* timeMs * PI / 180.0 / 200.0);
+			if (hit.mat == 1) { // we hit the portal										// Uncomment these to unlock features
+				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72.0 * PI / 180.0 /* + 0.4* timeMs * PI / 180.0 / 200.0 */);
+				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72.0 * PI / 180.0 /* + 0.4* timeMs * PI / 180.0 / 200.0 */);
 			}
 		}
 	}

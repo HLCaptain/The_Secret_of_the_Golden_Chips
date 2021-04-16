@@ -33,14 +33,33 @@
 //=============================================================================================
 
 /**
+ * Szeretek angolul dokumentálni mindent, így a továbbiakban így teszek.
+ * Köszönöm megértését, Püspök-Kiss Balázs (BL6ADS)
  * This homework is based on the Computer Graphics Sample Program: GPU ray casting.
  * Also copied some fragment shader code from Mirascope Simulator.
  * I modified the programs to fit the description of the second homework.
  */
 
-// Use this to debug.
+/**
+ * IMPORTANT
+ * IMPORTANT
+ * IMPORTANT
+ * 
+ * An attempt was made to be featured in the next "Házi feladat válogatás".
+ * The name of the project is: "Az arany csipsz titka".
+ * To turn on some implemented features, do the following:
+ *		- Uncomment Line 718
+ *		- Uncomment 3 Lines after line 731
+ *		- Uncomment segments in Line 360 and 361
+ * Hope you have FUN!!! :)
+ * 
+ * IMPORTANT
+ * IMPORTANT
+ * IMPORTANT
+ */
 
-#define DEBUG
+// Use this to debug.
+//#define DEBUG
 
 #include "framework.h"
 
@@ -338,9 +357,9 @@ vec3 trace(Ray ray) {
 			if (hit.mat == 2) { // we hit the chips
 				ray.dir = reflectedRay;
 			}
-			if (hit.mat == 1) { // we hit the portal
-				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72.0 * PI / 180.0 + 0.0* timeMs * PI / 180.0 / 200.0);
-				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72.0 * PI / 180.0 + 0.0* timeMs * PI / 180.0 / 200.0);
+			if (hit.mat == 1) { // we hit the portal										// Uncomment these to unlock features
+				ray.dir = rotPointAroundAxis(reflectedRay, hit.normal, 72.0 * PI / 180.0 /* + 0.4* timeMs * PI / 180.0 / 200.0 */);
+				ray.start = rotPointAroundAxis(ray.start, hit.normal, 72.0 * PI / 180.0 /* + 0.4* timeMs * PI / 180.0 / 200.0 */);
 			}
 		}
 	}
@@ -589,7 +608,7 @@ public:
 
 		// uploading the encasing of the quad
 		setUniform(vec3(0.0f, 0.0f, 0.0f), "quadSphere.center");
-		setUniform(0.6f, "quadSphere.radius"); // 0.3m radius of the encased parabola
+		setUniform(0.3f, "quadSphere.radius"); // 0.3m radius of the encased parabola
 	}
 
 	// sometimes it is fun changing things in real time ya know... in the shader...
@@ -696,6 +715,7 @@ public:
 		shader.setUniformMaterials(dodDifMat, dodRefMat, chipsMat);
 		shader.setUniformLight(pointLight);
 		shader.setUniformCamera(camera);
+		// UNCOMMENT NEXT LINE TO UNLOCK FEATURE
 		//shader.setUniformTime(curTime); // current time needed for cool effects if enabled in the shader
 	}
 
@@ -709,9 +729,10 @@ public:
 		dodDifMat.ka = vec3(1, 1, 1);
 
 		// just for fun
-		quad.a = (cos((float)curTime / 2000.0) * 2);
-		quad.b = (cos((float)curTime / 2000.0 + 180 * M_PI / 180) * 2);
-		quad.c = (cos((float)curTime / 3000.0 + 0 * M_PI / 180) * 2);
+		// UNCOMMENT NEXT 3 LINES TO UNLOCK FEATURE
+		//quad.a = (cos((float)curTime / 2000.0) * 2);
+		//quad.b = (cos((float)curTime / 2000.0 + 180 * M_PI / 180) * 2);
+		//quad.c = (cos((float)curTime / 3000.0 + 0 * M_PI / 180) * 2);
 	}
 };
 
